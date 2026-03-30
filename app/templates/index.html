@@ -1,0 +1,28 @@
+<!-- 首页模板，继承基础模板 -->
+{% extends "base.html" %}
+
+<!-- 页面标题 -->
+{% block title %}首页 - {{ project_name }}{% endblock %}
+
+<!-- 页面主内容 -->
+{% block content %}
+<div class="welcome-card">
+    <h2>欢迎来到 FastAPI 学习项目</h2>
+    <p>项目版本：<strong>{{ project_version }}</strong></p>
+    <p>本项目专为FastAPI入门打造，覆盖以下核心知识点：</p>
+    <ul class="feature-list">
+        <li>✅ 路由分发与模块化开发</li>
+        <li>✅ 自动生成交互式接口文档</li>
+        <li>✅ Request对象核心用法</li>
+        <li>✅ 静态文件与Jinja2模板渲染</li>
+        <li>✅ SQLite数据库集成（SQLAlchemy ORM）</li>
+        <li>✅ Pydantic数据校验与模型设计</li>
+        <li>✅ 依赖注入系统</li>
+        <li>✅ 完整CRUD接口开发</li>
+    </ul>
+    <div class="btn-group">
+        <a href="/docs" class="btn primary-btn">查看接口文档</a>
+        <a href="/book-list" class="btn secondary-btn">查看图书列表</a>
+    </div>
+</div>
+{% endblock %}

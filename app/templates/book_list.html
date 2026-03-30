@@ -1,0 +1,35 @@
+<!-- 图书列表页模板，继承基础模板 -->
+{% extends "base.html" %}
+
+<!-- 页面标题 -->
+{% block title %}图书列表 - FastAPI学习项目{% endblock %}
+
+<!-- 页面主内容 -->
+{% block content %}
+<div class="page-header">
+    <h2>图书列表</h2>
+    <p>从SQLite数据库中查询的所有图书数据</p>
+</div>
+
+{% if books %}
+<div class="book-grid">
+    {% for book in books %}
+    <div class="book-card">
+        <h3 class="book-title">{{ book.title }}</h3>
+        <p class="book-author">作者：{{ book.author }}</p>
+        <p class="book-price">价格：¥ {{ book.price }}</p>
+        {% if book.description %}
+        <p class="book-desc">{{ book.description }}</p>
+        {% else %}
+        <p class="book-desc">暂无简介</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-card">
+    <h3>暂无图书数据</h3>
+    <p>请先通过 <a href="/docs">接口文档</a> 创建图书数据</p>
+</div>
+{% endif %}
+{% endblock %}

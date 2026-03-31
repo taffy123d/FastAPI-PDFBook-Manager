@@ -30,6 +30,17 @@
             <textarea id="description" name="description" rows="4">{{ book.description if book and book.description else '' }}</textarea>
         </div>
 
+        <!-- 【新增】选择 PDF 文件 -->
+        <div class="form-group">
+            <label for="filename">关联 PDF 文件</label>
+            <select id="filename" name="filename">
+                <option value="">-- 不关联 PDF --</option>
+            </select>
+            <p style="font-size: 0.875rem; color: #64748b; margin-top: 0.25rem;">
+                先去列表页上传 PDF，再在这里选择
+            </p>
+        </div>
+
         <div class="btn-group">
             <button type="submit" class="btn primary-btn">
                 {% if is_edit %}保存修改{% else %}创建图书{% endif %}
@@ -40,34 +51,73 @@
 </div>
 
 <script>
-    // 获取表单元素
-    const form = document.getElementById('bookForm');
+    // 全局变量
     const isEdit = {{ is_edit | tojson }};
-    const bookId = {{ book.id if book else 'null' }};
+    const book = {{ book | tojson if book else 'null' }};
+
+    // 页面加载时执行
+    window.addEventListener('load', async () => {
+        // 1. 加载 PDF 列表
+        await loadPdfList();
+
+        // 2. 如果是编辑模式，回填当前的 filename
+        if (isEdit && book) {
+            const filenameSelect = document.getElementById('filename');
+            if (book.filename) {
+                filenameSelect.value = book.filename;
+            }
+        }
+    });
+
+    // 加载 PDF 列表
+    async function loadPdfList() {
+        const filenameSelect = document.getElementById('filename');
+        
+        try {
+            const response = await fetch('/api/v1/books/pdfs/list');
+            if (response.ok) {
+                const data = await response.json();
+                const pdfs = data.pdfs || [];
+                
+                // 清空现有选项（保留第一个“不关联”）
+                filenameSelect.innerHTML = '<option value="">-- 不关联 PDF --</option>';
+                
+                // 添加 PDF 选项
+                pdfs.forEach(filename => {
+                    const option = document.createElement('option');
+                    option.value = filename;
+                    option.textContent = filename;
+                    filenameSelect.appendChild(option);
+                });
+            }
+        } catch (err) {
+            console.error('加载 PDF 列表失败', err);
+        }
+    }
 
     // 监听表单提交
+    const form = document.getElementById('bookForm');
     form.addEventListener('submit', async (e) => {
-        e.preventDefault(); // 阻止默认表单跳转
+        e.preventDefault();
 
         // 收集表单数据
         const formData = {
             title: document.getElementById('title').value,
             author: document.getElementById('author').value,
             price: parseFloat(document.getElementById('price').value),
-            description: document.getElementById('description').value || null
+            description: document.getElementById('description').value || null,
+            filename: document.getElementById('filename').value || null
         };
 
         try {
             let url = '/api/v1/books/';
             let method = 'POST';
 
-            // 如果是编辑模式，修改 URL 和 Method
             if (isEdit) {
-                url = `/api/v1/books/${bookId}`;
+                url = `/api/v1/books/${book.id}`;
                 method = 'PUT';
             }
 
-            // 调用后端 API
             const response = await fetch(url, {
                 method: method,
                 headers: {
@@ -78,7 +128,7 @@
 
             if (response.ok) {
                 alert(isEdit ? '修改成功！' : '创建成功！');
-                window.location.href = '/book-list'; // 跳回列表页
+                window.location.href = '/book-list';
             } else {
                 const error = await response.json();
                 alert('操作失败：' + (error.detail || '未知错误'));

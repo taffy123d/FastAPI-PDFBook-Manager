@@ -2,9 +2,14 @@
 图书模块API接口
 实现图书完整的增删改查（CRUD），演示路由、依赖、数据校验核心用法
 """
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
+import os
+import shutil
 
 # 导入数据库依赖
 from app.database.db import get_db
@@ -12,6 +17,14 @@ from app.database.db import get_db
 from app.models.book import Book
 # 导入Pydantic模型
 from app.schemas.book import BookCreate, BookUpdate, BookResponse
+
+
+from app.utils.file_scanner import (
+    get_all_pdf_files,
+    get_pdf_path,
+    BOOK_PDF_DIR,
+    pdf_exists
+)
 
 # 创建子路由实例
 # prefix：该模块所有接口的URL前缀，自动拼接
@@ -22,20 +35,6 @@ router = APIRouter(
 )
 
 # 1. 查询所有图书
-# @router.get("/", response_model=list[BookResponse], summary="获取所有图书列表")
-# async def get_all_books(db: AsyncSession = Depends(get_db)):
-#     """
-#     查询数据库中所有的图书数据
-#     - 返回值：符合BookResponse模型的图书数组
-#     """
-#     # 执行异步查询
-#     result = await db.execute(select(Book))
-#     # 提取查询结果
-#     books = result.scalars().all()
-#     return books
-
-# 修改 app/api/endpoints/book.py 里的 get_all_books
-
 @router.get("/", response_model=list[BookResponse], summary="获取所有图书列表（支持搜索）")
 async def get_all_books(
     keyword: str | None = None,  # 新增：搜索关键词
@@ -173,3 +172,116 @@ async def delete_book(
     await db.commit()
 
     return
+
+# 【新增】上传 PDF 文件
+@router.post("/upload", summary="上传PDF文件")
+async def upload_pdf(file: UploadFile = File(...)):
+    """
+    上传 PDF 文件到 static/book 目录
+    """
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="只支持上传 PDF 文件"
+        )
+    
+    # 确保目录存在
+    if not os.path.exists(BOOK_PDF_DIR):
+        os.makedirs(BOOK_PDF_DIR)
+    
+    file_path = os.path.join(BOOK_PDF_DIR, file.filename)
+    
+    # 保存文件
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    return {"filename": file.filename, "message": "上传成功"}
+
+
+# 【新增】扫描文件夹并同步到数据库
+@router.post("/scan-folder", summary="扫描PDF文件夹并同步数据库")
+async def scan_and_sync(db: AsyncSession = Depends(get_db)):
+    """
+    扫描 static/book 目录，自动根据 PDF 文件名创建图书记录
+    文件名格式：书名_作者.pdf 或 书名.pdf
+    """
+    pdf_files = get_all_pdf_files()
+    
+    # 查询数据库中已有的图书
+    result = await db.execute(select(Book))
+    existing_books = {book.filename: book for book in result.scalars().all() if book.filename}
+    
+    added_count = 0
+    
+    for filename in pdf_files:
+        if filename not in existing_books:
+            # 解析文件名：假设格式为 "书名_作者.pdf" 或 "书名.pdf"
+            name_without_ext = filename[:-4]  # 去掉 .pdf
+            
+            if "_" in name_without_ext:
+                title, author = name_without_ext.split("_", 1)
+            else:
+                title = name_without_ext
+                author = "未知作者"
+            
+            # 创建新图书
+            new_book = Book(
+                title=title,
+                author=author,
+                price=0.0,
+                description="自动扫描添加",
+                filename=filename
+            )
+            db.add(new_book)
+            added_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"扫描完成，新增 {added_count} 本图书",
+        "total_pdf": len(pdf_files),
+        "added": added_count
+    }
+
+
+
+
+# 【修改】创建图书时支持关联 PDF
+@router.post("/", response_model=BookResponse, status_code=status.HTTP_201_CREATED)
+async def create_book(
+    book_data: BookCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    # 如果传了 filename，检查文件是否存在
+    if book_data.filename and not pdf_exists(book_data.filename):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"PDF 文件 {book_data.filename} 不存在，请先上传"
+        )
+    
+    result = await db.execute(select(Book).where(Book.title == book_data.title))
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"图书《{book_data.title}》已存在"
+        )
+    
+    new_book = Book(**book_data.model_dump())
+    db.add(new_book)
+    await db.commit()
+    await db.refresh(new_book)
+    
+    return new_book
+
+
+# 在 app/api/endpoints/book.py 最后添加
+
+# 【新增】获取所有已上传的 PDF 文件列表
+@router.get("/pdfs/list", summary="获取已上传的PDF文件列表")
+async def get_pdf_list():
+    """
+    获取 static/book 目录下所有 PDF 文件名
+    """
+    from app.utils.file_scanner import get_all_pdf_files
+    pdf_files = get_all_pdf_files()
+    return {"pdfs": pdf_files}

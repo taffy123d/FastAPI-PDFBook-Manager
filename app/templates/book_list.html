@@ -70,6 +70,21 @@
     <div class="form-card" style="width: 90%; max-width: 500px;">
         <h2>上传 PDF 文件</h2>
         <input type="file" id="pdfFile" accept=".pdf" style="margin: 1.5rem 0; width: 100%;">
+
+        <!-- 上传进度条 -->
+        <div id="uploadProgressContainer" style="display: none; margin: 1rem 0;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span id="uploadStatus">正在上传...</span>
+                <span id="uploadPercent">0%</span>
+            </div>
+            <div style="width: 100%; height: 8px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                <div id="uploadProgressBar" style="width: 0%; height: 100%; background-color: #3b82f6; transition: width 0.3s ease;"></div>
+            </div>
+            <div style="text-align: center; margin-top: 0.5rem;">
+                <span id="uploadSpeed" style="font-size: 0.875rem; color: #64748b;"></span>
+            </div>
+        </div>
+
         <div class="btn-group">
             <button onclick="uploadPdf()" class="btn primary-btn">上传</button>
             <button onclick="hideUploadModal()" class="btn secondary-btn">取消</button>
@@ -78,6 +93,9 @@
 </div>
 
 <script>
+    // 全局变量：当前上传的 XHR 对象
+    let currentXHR = null;
+
     // 搜索图书函数
     function searchBooks() {
         const keyword = document.getElementById('searchInput').value.trim();
@@ -138,43 +156,209 @@
 
     // 隐藏上传弹窗
     function hideUploadModal() {
+        // 如果正在上传，先取消上传
+        if (currentXHR) {
+            cancelUpload();
+        }
         document.getElementById('uploadModal').style.display = 'none';
         document.getElementById('pdfFile').value = '';
+        // 重置进度条
+        const progressContainer = document.getElementById('uploadProgressContainer');
+        const progressBar = document.getElementById('uploadProgressBar');
+        const uploadPercent = document.getElementById('uploadPercent');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const uploadSpeed = document.getElementById('uploadSpeed');
+
+        progressContainer.style.display = 'none';
+        progressBar.style.width = '0%';
+        uploadPercent.textContent = '0%';
+        uploadStatus.textContent = '正在上传...';
+        uploadSpeed.textContent = '';
+
+        // 恢复上传按钮状态
+        const uploadBtn = document.querySelector('#uploadModal .primary-btn');
+        if (uploadBtn) {
+            uploadBtn.textContent = '上传';
+            uploadBtn.disabled = false;
+        }
     }
 
-    // 上传 PDF
+    // 取消上传
+    function cancelUpload() {
+        if (currentXHR) {
+            currentXHR.abort();
+            currentXHR = null;
+
+            const uploadBtn = document.querySelector('#uploadModal .primary-btn');
+            if (uploadBtn) {
+                uploadBtn.textContent = '上传';
+                uploadBtn.onclick = uploadPdf;
+                uploadBtn.disabled = false;
+            }
+
+            const uploadStatus = document.getElementById('uploadStatus');
+            if (uploadStatus) {
+                uploadStatus.textContent = '已取消';
+            }
+
+            const uploadPercent = document.getElementById('uploadPercent');
+            if (uploadPercent) {
+                uploadPercent.textContent = '已取消';
+            }
+
+            // 隐藏进度条
+            const progressContainer = document.getElementById('uploadProgressContainer');
+            if (progressContainer) {
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                }, 2000);
+            }
+        }
+    }
+
+    // 上传 PDF（带进度条）
     async function uploadPdf() {
         const fileInput = document.getElementById('pdfFile');
         const file = fileInput.files[0];
-        
+
         if (!file) {
             alert('请先选择文件');
             return;
         }
 
+        // 显示进度条
+        const progressContainer = document.getElementById('uploadProgressContainer');
+        const progressBar = document.getElementById('uploadProgressBar');
+        const uploadPercent = document.getElementById('uploadPercent');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const uploadSpeed = document.getElementById('uploadSpeed');
+
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        uploadPercent.textContent = '0%';
+        uploadStatus.textContent = '正在上传...';
+        uploadSpeed.textContent = '';
+
+        // 切换上传按钮为取消按钮
+        const uploadBtn = document.querySelector('#uploadModal .primary-btn');
+        const originalText = uploadBtn.textContent;
+        const originalOnclick = uploadBtn.onclick;
+        uploadBtn.textContent = '取消上传';
+        uploadBtn.onclick = cancelUpload;
+        uploadBtn.disabled = false;
+
         const formData = new FormData();
         formData.append('file', file);
 
-        try {
-            const response = await fetch('/api/v1/books/upload', {
-                method: 'POST',
-                body: formData
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            currentXHR = xhr;
+            let uploadStartTime = Date.now();
+
+            // 监听上传进度事件
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percent = Math.round((event.loaded / event.total) * 100);
+                    progressBar.style.width = percent + '%';
+                    uploadPercent.textContent = percent + '%';
+
+                    // 计算上传速度
+                    const currentTime = Date.now();
+                    const elapsedTime = (currentTime - uploadStartTime) / 1000; // 秒
+                    if (elapsedTime > 0) {
+                        const speed = event.loaded / elapsedTime; // 字节/秒
+                        let speedText;
+                        if (speed > 1024 * 1024) {
+                            speedText = (speed / (1024 * 1024)).toFixed(2) + ' MB/s';
+                        } else if (speed > 1024) {
+                            speedText = (speed / 1024).toFixed(2) + ' KB/s';
+                        } else {
+                            speedText = speed.toFixed(2) + ' B/s';
+                        }
+                        uploadSpeed.textContent = speedText;
+                    }
+                }
             });
 
-            if (response.ok) {
-                const result = await response.json();
-                alert('上传成功！\n点击「确定」后扫描文件夹自动创建图书记录');
-                hideUploadModal();
-                // 上传成功后自动扫描
-                await scanFolder(true);
-            } else {
-                const error = await response.json();
-                alert('上传失败：' + (error.detail || '未知错误'));
-            }
-        } catch (err) {
-            console.error(err);
-            alert('网络错误');
-        }
+            // 上传完成
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const result = JSON.parse(xhr.responseText);
+                        uploadStatus.textContent = '上传完成！';
+                        uploadPercent.textContent = '100%';
+
+                        // 恢复按钮状态
+                        uploadBtn.textContent = originalText;
+                        uploadBtn.onclick = originalOnclick;
+                        uploadBtn.disabled = false;
+                        currentXHR = null;
+
+                        // 成功提示
+                        setTimeout(() => {
+                            alert('上传成功！\n点击「确定」后扫描文件夹自动创建图书记录');
+                            hideUploadModal();
+                            // 上传成功后自动扫描
+                            scanFolder(true).then(resolve).catch(reject);
+                        }, 500);
+                    } catch (err) {
+                        reject(err);
+                    }
+                } else {
+                    let errorMsg = '上传失败';
+                    try {
+                        const error = JSON.parse(xhr.responseText);
+                        errorMsg += ': ' + (error.detail || '未知错误');
+                    } catch {
+                        errorMsg += ': 服务器错误 ' + xhr.status;
+                    }
+                    uploadStatus.textContent = '上传失败';
+                    uploadPercent.textContent = '错误';
+
+                    // 恢复按钮状态
+                    uploadBtn.textContent = originalText;
+                    uploadBtn.onclick = originalOnclick;
+                    uploadBtn.disabled = false;
+                    currentXHR = null;
+
+                    setTimeout(() => {
+                        alert(errorMsg);
+                        reject(new Error(errorMsg));
+                    }, 500);
+                }
+            });
+
+            // 上传出错
+            xhr.addEventListener('error', () => {
+                uploadStatus.textContent = '网络错误';
+                uploadPercent.textContent = '失败';
+
+                // 恢复按钮状态
+                uploadBtn.textContent = originalText;
+                uploadBtn.onclick = originalOnclick;
+                uploadBtn.disabled = false;
+                currentXHR = null;
+
+                setTimeout(() => {
+                    alert('网络错误，请检查连接');
+                    reject(new Error('Network error'));
+                }, 500);
+            });
+
+            // 取消上传
+            xhr.addEventListener('abort', () => {
+                uploadStatus.textContent = '已取消';
+                uploadPercent.textContent = '已取消';
+
+                // 恢复按钮状态
+                uploadBtn.textContent = originalText;
+                uploadBtn.disabled = false;
+            });
+
+            // 发送请求
+            xhr.open('POST', '/api/v1/books/upload');
+            xhr.send(formData);
+        });
     }
 
     // 扫描文件夹

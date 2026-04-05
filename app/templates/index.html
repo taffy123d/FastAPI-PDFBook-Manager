@@ -7,7 +7,7 @@
 <!-- 页面主内容 -->
 {% block content %}
 <div class="welcome-card">
-    <h2>欢迎来到 FastAPI 学习项目</h2>
+    <h2>欢迎来到 PDF 图书管理系统</h2>
     <p>项目版本：<strong>{{ project_version }}</strong></p>
     <p>本项目专为FastAPI入门打造，覆盖以下核心知识点：</p>
     <ul class="feature-list">
@@ -25,4 +25,28 @@
         <a href="/book-list" class="btn secondary-btn">查看图书列表</a>
     </div>
 </div>
+
+<!-- Sakana Widget 容器 -->
+<div class="sakana-widget-container" style="margin-top: 2rem; text-align: center;">
+    <h3>🐟 Sakana! Widget 石蒜模拟器</h3>
+    <p>拖拽角色，体验物理模拟！</p>
+    <div id="sakana-widget" style="display: inline-block; position: relative;"></div>
+</div>
+
+<!-- Sakana Widget CDN 引入 -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/sakana-widget@2.7.1/lib/sakana.min.css"
+/>
+<script>
+  function initSakanaWidget() {
+    new SakanaWidget().mount('#sakana-widget');
+  }
+</script>
+<script
+  async
+  onload="initSakanaWidget()"
+  src="https://cdn.jsdelivr.net/npm/sakana-widget@2.7.1/lib/sakana.min.js"
+></script>
+
 {% endblock %}

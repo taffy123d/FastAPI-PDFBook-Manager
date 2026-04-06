@@ -5,7 +5,7 @@
 
 ---
 ## 新增
-- cli工具，暴露cli接口可供调试或agent调用 详见CLI_README.md
+- cli工具，暴露cli接口可供调试或agent调用 详见CLI_README.md(2026/4/7)
 
 ## 项目特性
 - ✅ 标准工程化目录结构，适合学习与扩展
